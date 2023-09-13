@@ -98,6 +98,7 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
             'QEMU': 'community.libvirt.libvirt_qemu'
         }).get(connection.getType())
 
+        self.inventory.add_group('libvirt')
         for server in connection.listAllDomains():
             inventory_hostname = dict({
                 'uuid': server.UUIDString(),
@@ -113,11 +114,8 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
                 self.get_option('inventory_hostname')
             )
 
-            # TODO(daveol): Fix "Invalid characters were found in group names"
-            # This warning is generated because of uuid's
             self.inventory.add_host(inventory_hostname)
-            self.inventory.add_group(inventory_hostname_alias)
-            self.inventory.add_child(inventory_hostname_alias, inventory_hostname)
+            self.inventory.add_child('libvirt', inventory_hostname)
 
             if connection_plugin is not None:
                 self.inventory.set_variable(
@@ -159,32 +157,33 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
                     domain.XMLDesc()
                 )
 
-                # This needs the guest powered on, 'qemu-guest-agent' installed and the org.qemu.guest_agent.0 channel configured.
-                domain_guestInfo = ''
-                try:
-                    # type==0 returns all types (users, os, timezone, hostname, filesystem, disks, interfaces)
-                    domain_guestInfo = domain.guestInfo(types=0)
-                except libvirt.libvirtError as e:
-                    domain_guestInfo = {"error": str(e)}
-                finally:
-                    self.inventory.set_variable(
-                        inventory_hostname,
-                        'guest_info',
-                        domain_guestInfo
-                    )
+                if _domain_state == 1:
+                    # This needs the guest powered on, 'qemu-guest-agent' installed and the org.qemu.guest_agent.0 channel configured.
+                    domain_guestInfo = ''
+                    try:
+                        # type==0 returns all types (users, os, timezone, hostname, filesystem, disks, interfaces)
+                        domain_guestInfo = domain.guestInfo(types=0)
+                    except libvirt.libvirtError as e:
+                        domain_guestInfo = {"error": str(e)}
+                    finally:
+                        self.inventory.set_variable(
+                            inventory_hostname,
+                            'guest_info',
+                            domain_guestInfo
+                        )
 
-                # This needs the guest powered on, 'qemu-guest-agent' installed and the org.qemu.guest_agent.0 channel configured.
-                domain_interfaceAddresses = ''
-                try:
-                    domain_interfaceAddresses = domain.interfaceAddresses(source=libvirt.VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_AGENT)
-                except libvirt.libvirtError as e:
-                    domain_interfaceAddresses = {"error": str(e)}
-                finally:
-                    self.inventory.set_variable(
-                        inventory_hostname,
-                        'interface_addresses',
-                        domain_interfaceAddresses
-                    )
+                    # This needs the guest powered on, 'qemu-guest-agent' installed and the org.qemu.guest_agent.0 channel configured.
+                    domain_interfaceAddresses = ''
+                    try:
+                        domain_interfaceAddresses = domain.interfaceAddresses(source=libvirt.VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_AGENT)
+                    except libvirt.libvirtError as e:
+                        domain_interfaceAddresses = {"error": str(e)}
+                    finally:
+                        self.inventory.set_variable(
+                            inventory_hostname,
+                            'interface_addresses',
+                            domain_interfaceAddresses
+                        )
 
             # Get variables for compose
             variables = self.inventory.hosts[inventory_hostname].get_vars()
